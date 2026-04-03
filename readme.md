@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./example.png" alt="Grafana Dashboard example" />
+</p>
+
 # What
 This project validates environmental data from a raspberry pi sense hat and one wire temperature sensors then writes them into influxDB version 3. This uses the newer flux query language and doesn't support InfluxDB version 2.
 
