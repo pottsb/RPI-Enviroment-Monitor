@@ -1,14 +1,13 @@
-from classes.EnvironmentalSensor import EnvironmentalSensor
 from classes.InfluxDBManager import InfluxDBManager
 from classes.SensorManager import SensorManager
+from classes.DisplayManager import DisplayManager
 from sense_hat import SenseHat
 from dotenv import load_dotenv
 import os
 
-import time
 import logging
 import signal
-import sys
+import threading
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -20,49 +19,105 @@ URL = os.environ.get("URL")
 TOKEN = os.environ.get("TOKEN")
 ORG = os.environ.get("ORG")
 BUCKET = os.environ.get("BUCKET")
+DISPLAY_1W_SENSOR_NAME = os.environ.get("DISPLAY_1W_SENSOR_NAME")
+
+shutdown_event = threading.Event()
+
 
 def graceful_exit(signum, frame):
-    logging.info("Quitting....")
-    sys.exit(0)
+    logging.info("Shutdown signal received. Stopping threads.")
+    shutdown_event.set()
+
 
 def log_temperature():
     senseHat = SenseHat()
     sensor_manager = SensorManager(senseHat)
-
     influx_manager = InfluxDBManager(URL, TOKEN, ORG)
-    
-    # Set up signal handling
-    signal.signal(signal.SIGTERM, graceful_exit)
-    signal.signal(signal.SIGINT, graceful_exit)
 
     try:
-        while True:
-            # Prepare your data points
+        while not shutdown_event.is_set():
             w_data = sensor_manager.get_1w_data()
             sensehat_data = sensor_manager.get_sensehat_data()
             data_points = w_data + sensehat_data
 
             if len(data_points) == 0:
                 logging.error("No data points to write.")
-                time.sleep(SAMPLE_PERIOD)
+                if shutdown_event.wait(SAMPLE_PERIOD):
+                    break
                 continue
 
-            # Attempt to write data
             if not influx_manager.write_data(BUCKET, data_points):
                 logging.error("Write failed.")
-                time.sleep(RECONNECT_INTERVAL)
+                if shutdown_event.wait(RECONNECT_INTERVAL):
+                    break
                 continue
 
-            time.sleep(SAMPLE_PERIOD)  
+            if shutdown_event.wait(SAMPLE_PERIOD):
+                break
 
-    except KeyboardInterrupt:
-        print ("Program stopped by keyboard interrupt [CTRL_C] by user. ")
     except Exception as e:
-        print (f"An error occurred: {e}")
+        logging.exception(f"log_temperature encountered an error: {e}")
+        shutdown_event.set()
 
-    finally:
-        sys.exit(0) 
 
+def get_display_temperature(sensor_manager):
+    if not DISPLAY_1W_SENSOR_NAME:
+        return round(sensor_manager.senseHat.get_temperature(), 1)
+
+    w_data = sensor_manager.get_1w_data()
+
+    for data_point in w_data:
+        sensor_name = None
+        sensor_temperature = None
+
+        tags = getattr(data_point, "_tags", {})
+        fields = getattr(data_point, "_fields", {})
+
+        if isinstance(tags, dict):
+            sensor_name = tags.get("sensor")
+        if isinstance(fields, dict):
+            sensor_temperature = fields.get("value")
+
+        if sensor_name == DISPLAY_1W_SENSOR_NAME and sensor_temperature is not None:
+            return round(float(sensor_temperature), 1)
+
+    return round(sensor_manager.senseHat.get_temperature(), 1)
+
+
+def display_environmental_data_loop():
+    senseHat = SenseHat()
+    sensor_manager = SensorManager(senseHat)
+
+    while not shutdown_event.is_set():
+        try:
+            temperature = get_display_temperature(sensor_manager)
+            humidity = round(senseHat.get_humidity(), 1)
+            DisplayManager.display_environmental_data(temperature, humidity, senseHat)
+        except Exception as e:
+            logging.exception(f"display_environmental_data_loop encountered an error: {e}")
+            if shutdown_event.wait(1):
+                break
+
+    logging.info("Display loop stopped.")
 
 if __name__ == '__main__':
-    log_temperature()
+    signal.signal(signal.SIGTERM, graceful_exit)
+    signal.signal(signal.SIGINT, graceful_exit)
+
+    log_thread = threading.Thread(target=log_temperature, name="log_temperature_thread")
+    display_thread = threading.Thread(target=display_environmental_data_loop, name="display_loop_thread")
+
+    log_thread.start()
+    display_thread.start()
+
+    try:
+        while log_thread.is_alive() and display_thread.is_alive():
+            log_thread.join(timeout=0.5)
+            display_thread.join(timeout=0.5)
+    except KeyboardInterrupt:
+        graceful_exit(signal.SIGINT, None)
+    finally:
+        shutdown_event.set()
+        log_thread.join()
+        display_thread.join()
+        logging.info("Shutdown complete.")
