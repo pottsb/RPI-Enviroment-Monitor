@@ -3,7 +3,7 @@ from classes.SensorManager import SensorManager
 from classes.DisplayManager import DisplayManager
 from sense_hat import SenseHat
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 import uvicorn
 import os
 
@@ -120,6 +120,13 @@ def _point_to_response(data_point):
     }
 
 
+def _sensehat_point_to_response(data_point):
+    measurement = getattr(data_point, "_name", None)
+    fields = getattr(data_point, "_fields", {})
+    value = fields.get("value") if isinstance(fields, dict) else None
+    return {"measurement": measurement, "value": value}
+
+
 def run_api_loop():
     senseHat = SenseHat()
     sensor_manager = SensorManager(senseHat)
@@ -129,17 +136,17 @@ def run_api_loop():
     def get_w1_data():
         w_data = sensor_manager.get_w1_data()
         if len(w_data) == 0:
-            return HTTPException(status_code=500, detail="No data available")
-            
+            raise HTTPException(status_code=500, detail="No data available")
+
         return {"data": [_point_to_response(point) for point in w_data]}
 
     @app.get("/sensehat")
     def get_sensehat_data():
         sensehat_data = sensor_manager.get_sensehat_data()
         if len(sensehat_data) == 0:
-            return HTTPException(status_code=500, detail="No data available")
+            raise HTTPException(status_code=500, detail="No data available")
 
-        return {"data": [_point_to_response(point) for point in sensehat_data]}
+        return {"data": [_sensehat_point_to_response(point) for point in sensehat_data]}
 
     global api_server
     config = uvicorn.Config(app, host=API_HOST, port=API_PORT, log_level="info")
