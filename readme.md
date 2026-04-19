@@ -11,7 +11,7 @@ Data is validated to be in a sensible range and implausible rapid changes are re
 I use the sense hat LED matrix to display the current humidity and temperature. Due to the proximity of the sense hat temperature sensor to the LED matrix this affects accuracy. The one wire sensors are more accurate and precise than the sense hat and allow logging from multiple sensors.
 
 # How
-1w_initsensors.py can be used to name sensors. when running main.py if no name is found the ID will be used. This script is designed for one new sensor to be added to the bus at a time.
+w1_initsensors.py can be used to name sensors. when running main.py if no name is found the ID will be used. This script is designed for one new sensor to be added to the bus at a time.
 
 # Limitations
 Alerting is currently disabled as I've improved my ventilation system and no longer need to open my shed door when it gets too hot 🥳.

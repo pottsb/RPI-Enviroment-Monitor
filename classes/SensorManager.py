@@ -17,7 +17,7 @@ class SensorManager:
         self.validateSensor = EnvironmentalSensor()
         self.senseHat = senseHat
 
-    def get_1w_data(self):
+    def get_w1_data(self):
         """
         Collects temperature data from 1-wire sensors, validates it, and prepares data points for InfluxDB.
 

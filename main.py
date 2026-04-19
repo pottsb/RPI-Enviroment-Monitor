@@ -21,7 +21,7 @@ URL = os.environ.get("URL")
 TOKEN = os.environ.get("TOKEN")
 ORG = os.environ.get("ORG")
 BUCKET = os.environ.get("BUCKET")
-DISPLAY_1W_SENSOR_NAME = os.environ.get("DISPLAY_1W_SENSOR_NAME")
+DISPLAY_W1_SENSOR_NAME = os.environ.get("DISPLAY_W1_SENSOR_NAME")
 API_HOST = os.environ.get("API_HOST", "0.0.0.0")
 API_PORT = int(os.environ.get("API_PORT", "8000"))
 
@@ -44,7 +44,7 @@ def log_temperature():
 
     try:
         while not shutdown_event.is_set():
-            w_data = sensor_manager.get_1w_data()
+            w_data = sensor_manager.get_w1_data()
             sensehat_data = sensor_manager.get_sensehat_data()
             data_points = w_data + sensehat_data
 
@@ -69,10 +69,10 @@ def log_temperature():
 
 
 def get_display_temperature(sensor_manager):
-    if not DISPLAY_1W_SENSOR_NAME:
+    if not DISPLAY_W1_SENSOR_NAME:
         return round(sensor_manager.senseHat.get_temperature(), 1)
 
-    w_data = sensor_manager.get_1w_data()
+    w_data = sensor_manager.get_w1_data()
 
     for data_point in w_data:
         sensor_name = None
@@ -86,7 +86,7 @@ def get_display_temperature(sensor_manager):
         if isinstance(fields, dict):
             sensor_temperature = fields.get("value")
 
-        if sensor_name == DISPLAY_1W_SENSOR_NAME and sensor_temperature is not None:
+        if sensor_name == DISPLAY_W1_SENSOR_NAME and sensor_temperature is not None:
             return round(float(sensor_temperature), 1)
 
     return round(sensor_manager.senseHat.get_temperature(), 1)
@@ -127,7 +127,7 @@ def run_api_loop():
 
     @app.get("/w1")
     def get_w1_data():
-        w_data = sensor_manager.get_1w_data()
+        w_data = sensor_manager.get_w1_data()
         if len(w_data) == 0:
             return HTTPException(status_code=500, detail="No data available")
             
@@ -138,7 +138,7 @@ def run_api_loop():
         sensehat_data = sensor_manager.get_sensehat_data()
         if len(sensehat_data) == 0:
             return HTTPException(status_code=500, detail="No data available")
-            
+
         return {"data": [_point_to_response(point) for point in sensehat_data]}
 
     global api_server
