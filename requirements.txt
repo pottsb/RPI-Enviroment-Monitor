@@ -1,0 +1,8 @@
+# Direct dependencies (versions pinned from a clean venv install, 2026-04-19).
+fastapi==0.136.0
+uvicorn[standard]==0.44.0
+python-dotenv==1.2.2
+influxdb-client==1.50.0
+w1thermsensor==2.3.0
+requests==2.33.1
+sense-hat==2.6.0

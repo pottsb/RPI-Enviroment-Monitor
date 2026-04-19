@@ -24,10 +24,9 @@ add error handling for loading the .env file<br />
 Move os.environ.get() calls to better places<br />
 Remove value in normal range messages from the validateSensor class<br />
 add print for sample wait time<br />
-move to venv with requirements.txt<br />
 add method to name sensors based on lowest temperature. Using an inverted air duster can to freeze the sensors could then be used to identify them. <br />
 
-# Packages
-sudo /usr/bin/python -m pip install influxdb-client<br />
-sudo /usr/bin/python -m pip install w1thermsensor<br />
-sudo /usr/bin/python -m pip install python-dotenv<br />
+# Install
+python3 -m venv .venv-test
+source .venv-test/bin/activate
+pip install -r requirements.txt
