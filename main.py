@@ -3,6 +3,8 @@ from classes.SensorManager import SensorManager
 from classes.DisplayManager import DisplayManager
 from sense_hat import SenseHat
 from dotenv import load_dotenv
+from fastapi import FastAPI
+import uvicorn
 import os
 
 import logging
@@ -20,13 +22,19 @@ TOKEN = os.environ.get("TOKEN")
 ORG = os.environ.get("ORG")
 BUCKET = os.environ.get("BUCKET")
 DISPLAY_1W_SENSOR_NAME = os.environ.get("DISPLAY_1W_SENSOR_NAME")
+API_HOST = os.environ.get("API_HOST", "0.0.0.0")
+API_PORT = int(os.environ.get("API_PORT", "8000"))
 
 shutdown_event = threading.Event()
+api_server = None
 
 
 def graceful_exit(signum, frame):
     logging.info("Shutdown signal received. Stopping threads.")
     shutdown_event.set()
+    global api_server
+    if api_server is not None:
+        api_server.should_exit = True
 
 
 def log_temperature():
@@ -100,24 +108,69 @@ def display_environmental_data_loop():
 
     logging.info("Display loop stopped.")
 
+
+def _point_to_response(data_point):
+    measurement = getattr(data_point, "_name", None)
+    tags = getattr(data_point, "_tags", {})
+    fields = getattr(data_point, "_fields", {})
+    return {
+        "measurement": measurement,
+        "tags": tags if isinstance(tags, dict) else {},
+        "fields": fields if isinstance(fields, dict) else {}
+    }
+
+
+def run_api_loop():
+    senseHat = SenseHat()
+    sensor_manager = SensorManager(senseHat)
+    app = FastAPI()
+
+    @app.get("/w1")
+    def get_w1_data():
+        w_data = sensor_manager.get_1w_data()
+        if len(w_data) == 0:
+            return HTTPException(status_code=500, detail="No data available")
+            
+        return {"data": [_point_to_response(point) for point in w_data]}
+
+    @app.get("/sensehat")
+    def get_sensehat_data():
+        sensehat_data = sensor_manager.get_sensehat_data()
+        if len(sensehat_data) == 0:
+            return HTTPException(status_code=500, detail="No data available")
+            
+        return {"data": [_point_to_response(point) for point in sensehat_data]}
+
+    global api_server
+    config = uvicorn.Config(app, host=API_HOST, port=API_PORT, log_level="info")
+    api_server = uvicorn.Server(config)
+    api_server.run()
+    logging.info("API loop stopped.")
+
 if __name__ == '__main__':
     signal.signal(signal.SIGTERM, graceful_exit)
     signal.signal(signal.SIGINT, graceful_exit)
 
     log_thread = threading.Thread(target=log_temperature, name="log_temperature_thread")
     display_thread = threading.Thread(target=display_environmental_data_loop, name="display_loop_thread")
+    api_thread = threading.Thread(target=run_api_loop, name="api_loop_thread")
 
     log_thread.start()
     display_thread.start()
+    api_thread.start()
 
     try:
-        while log_thread.is_alive() and display_thread.is_alive():
+        while log_thread.is_alive() and display_thread.is_alive() and api_thread.is_alive():
             log_thread.join(timeout=0.5)
             display_thread.join(timeout=0.5)
+            api_thread.join(timeout=0.5)
     except KeyboardInterrupt:
         graceful_exit(signal.SIGINT, None)
     finally:
         shutdown_event.set()
+        if api_server is not None:
+            api_server.should_exit = True
         log_thread.join()
         display_thread.join()
+        api_thread.join()
         logging.info("Shutdown complete.")
